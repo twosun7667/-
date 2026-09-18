@@ -1,5 +1,8 @@
-// Cloudflare Worker — 정적 파일은 ASSETS 바인딩이 서빙하고,
-// /api/* 요청만 이 스크립트가 처리해 data.go.kr을 대신 호출한다(API 키를 브라우저에 감춤).
+// GitHub Actions에서 실행되는 스크립트.
+// data.go.kr(금융위원회_주식시세정보)을 호출해 public/data.json으로 저장한다.
+// API 키는 GitHub Secrets(STOCK_API_KEY)에서 환경변수로 주입된다.
+import { writeFile } from "node:fs/promises";
+
 const STOCKS = [
   { code: "005930", name: "삼성전자" },
   { code: "000660", name: "SK하이닉스" },
@@ -43,17 +46,10 @@ async function fetchStockHistory(apiKey, code, beginBasDt, endBasDt) {
   return finalList;
 }
 
-async function handleQuotes(env) {
-  const apiKey = env.STOCK_API_KEY;
-
+async function main() {
+  const apiKey = process.env.STOCK_API_KEY;
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "서버에 STOCK_API_KEY가 설정되지 않았습니다. Cloudflare 대시보드의 Settings → Variables and Secrets에서 등록해주세요.",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    throw new Error("STOCK_API_KEY 환경변수(GitHub Secret)가 설정되지 않았습니다.");
   }
 
   const end = new Date();
@@ -62,34 +58,19 @@ async function handleQuotes(env) {
   const beginBasDt = formatDate(begin);
   const endBasDt = formatDate(end);
 
-  try {
-    const stocks = await Promise.all(
-      STOCKS.map(async ({ code, name }) => {
-        const history = await fetchStockHistory(apiKey, code, beginBasDt, endBasDt);
-        return { code, name, history };
-      })
-    );
+  const stocks = await Promise.all(
+    STOCKS.map(async ({ code, name }) => {
+      const history = await fetchStockHistory(apiKey, code, beginBasDt, endBasDt);
+      return { code, name, history };
+    })
+  );
 
-    return new Response(
-      JSON.stringify({ updatedAt: new Date().toISOString(), stocks }),
-      {
-        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      }
-    );
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message || "알 수 없는 오류가 발생했습니다." }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  const payload = { updatedAt: new Date().toISOString(), stocks };
+  await writeFile("public/data.json", JSON.stringify(payload, null, 2));
+  console.log("public/data.json 갱신 완료:", payload.updatedAt);
 }
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    if (url.pathname === "/api/quotes") {
-      return handleQuotes(env);
-    }
-    return env.ASSETS.fetch(request);
-  },
-};
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

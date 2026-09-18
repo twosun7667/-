@@ -136,22 +136,23 @@ async function loadQuotes() {
   updatedAtEl.textContent = "불러오는 중...";
 
   try {
-    const res = await fetch("/api/quotes");
-    const data = await res.json();
-
+    const res = await fetch(`./data.json?t=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) {
-      throw new Error(data.error || "데이터를 불러오지 못했습니다.");
+      throw new Error(
+        "데이터 파일을 찾을 수 없습니다. GitHub Actions 워크플로가 아직 한 번도 실행되지 않았을 수 있습니다."
+      );
     }
+    const data = await res.json();
 
     lastStocks = data.stocks;
     renderAll(lastStocks);
 
     const t = new Date(data.updatedAt);
-    updatedAtEl.textContent = `마지막 조회: ${t.toLocaleString("ko-KR")}`;
+    updatedAtEl.textContent = `마지막 갱신: ${t.toLocaleString("ko-KR")}`;
   } catch (err) {
     errorBoxEl.textContent = err.message || "알 수 없는 오류가 발생했습니다.";
     errorBoxEl.hidden = false;
-    updatedAtEl.textContent = "조회 실패";
+    updatedAtEl.textContent = "불러오기 실패";
   } finally {
     refreshBtn.disabled = false;
   }
