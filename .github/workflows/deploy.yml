@@ -1,0 +1,50 @@
+name: 시세 갱신 및 배포
+
+on:
+  schedule:
+    # 매주 월~금 UTC 06:30 = KST 15:30 (금융위 API가 전 영업일 시세를
+    # 당일 오후에 갱신하므로 그 이후 시각으로 잡음)
+    - cron: "30 6 * * 1-5"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 주가 데이터 조회 (data.go.kr)
+        env:
+          STOCK_API_KEY: ${{ secrets.STOCK_API_KEY }}
+        run: node scripts/fetch-quotes.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
