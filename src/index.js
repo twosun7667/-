@@ -1,4 +1,5 @@
-// Cloudflare Pages Function — 브라우저 대신 서버에서 data.go.kr을 호출해 API 키를 감춘다.
+// Cloudflare Worker — 정적 파일은 ASSETS 바인딩이 서빙하고,
+// /api/* 요청만 이 스크립트가 처리해 data.go.kr을 대신 호출한다(API 키를 브라우저에 감춤).
 const STOCKS = [
   { code: "005930", name: "삼성전자" },
   { code: "000660", name: "SK하이닉스" },
@@ -42,14 +43,14 @@ async function fetchStockHistory(apiKey, code, beginBasDt, endBasDt) {
   return finalList;
 }
 
-export async function onRequestGet(context) {
-  const apiKey = context.env.STOCK_API_KEY;
+async function handleQuotes(env) {
+  const apiKey = env.STOCK_API_KEY;
 
   if (!apiKey) {
     return new Response(
       JSON.stringify({
         error:
-          "서버에 STOCK_API_KEY가 설정되지 않았습니다. Cloudflare Pages 프로젝트 설정에서 Secret을 등록해주세요.",
+          "서버에 STOCK_API_KEY가 설정되지 않았습니다. Cloudflare 대시보드의 Settings → Variables and Secrets에서 등록해주세요.",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
@@ -82,3 +83,13 @@ export async function onRequestGet(context) {
     );
   }
 }
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/api/quotes") {
+      return handleQuotes(env);
+    }
+    return env.ASSETS.fetch(request);
+  },
+};
